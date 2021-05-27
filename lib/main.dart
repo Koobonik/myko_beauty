@@ -5,6 +5,8 @@ import 'dart:io';
 import 'package:android_intent/android_intent.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+import 'package:mykobeauty/size_config.dart';
 import 'package:mykobeauty/util.dart';
 import 'package:package_info/package_info.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -18,8 +20,9 @@ class MyApp extends StatelessWidget {
   // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    return GetMaterialApp(
       title: 'MYKO beauty',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
         primarySwatch: Colors.blue,
       ),
@@ -29,8 +32,8 @@ class MyApp extends StatelessWidget {
 }
 class WebViewExample extends StatefulWidget {
   String token;
-
-  WebViewExample({this.token});
+  String initialUrl;
+  WebViewExample({this.token, this.initialUrl = 'https://www.mykobeauty.com'});
 
   @override
   _WebViewExampleState createState() => _WebViewExampleState();
@@ -41,6 +44,8 @@ class _WebViewExampleState extends State<WebViewExample> {
   Completer<WebViewController>();
   PackageInfo packageInfo = PackageInfo();
   bool likedUrl = false;
+
+  List<dynamic> localFavoriteUrlList = [];
   @override
   void initState() {
     WidgetsFlutterBinding.ensureInitialized();
@@ -49,6 +54,16 @@ class _WebViewExampleState extends State<WebViewExample> {
       setState(() {
         packageInfo = value;
       });
+    });
+    Util.getSharedString(FAVORITE_URL).then((value) async {
+      if(value != null){
+        List<dynamic> urls = jsonDecode(await Util.getSharedString(FAVORITE_URL));
+        setState(() {
+          localFavoriteUrlList = [];
+          localFavoriteUrlList.addAll(urls.toList());
+        });
+
+      }
     });
     if (Platform.isAndroid) WebView.platform = SurfaceAndroidWebView();
   }
@@ -62,42 +77,49 @@ class _WebViewExampleState extends State<WebViewExample> {
   }
   @override
   Widget build(BuildContext context) {
-
+    SizeConfig().init(context);
     return Scaffold(
-      drawer:  Drawer(
-        child: ListView(
-          children: <Widget>[
+      drawer:  Container(
+        width: SizeConfig.getProportionateScreenWidth(280),
+        child: Drawer(
+          child: ListView(
+            children: <Widget>[
 
-            CircleAvatar(
-               child: Image.asset("assets/app_icon.png"),
-               backgroundColor: Colors.white,
-               radius: 100,
-             ),
+              CircleAvatar(
+                 child: Image.asset("assets/app_icon.png"),
+                 backgroundColor: Colors.white,
+                 radius: 100,
+               ),
 
-            Container(height: 20,),
-            Padding(
-              padding: EdgeInsets.only(left :8.0, right: 8.0),
-              child: Text("Quick and Easy Search the product that you want."),
-            ),
-            // new ListTile(
-            //   title: new Text('Quick and Easy Search
-            //       Search the product that you want.'),
-            //   onTap: (){
-            //
-            //   },
-            // ),
-            Divider(
-              color: Colors.black,
-              height: 5.0,
-            ),
-            Padding(
-              padding: EdgeInsets.only(left :8.0, right: 8.0),
-              child: Text("app version ${packageInfo.version}"),
-            ),
-
-
-
-          ],
+              Container(height: SizeConfig.getProportionateScreenWidth(20),),
+              Padding(
+                padding: EdgeInsets.only(left :SizeConfig.getProportionateScreenWidth(8), right: SizeConfig.getProportionateScreenWidth(8)),
+                child: Text("Quick and Easy Search the product that you want.", style: TextStyle(fontSize: SizeConfig.getProportionateScreenWidth(14)),),
+              ),
+              Divider(color: Colors.black, height: SizeConfig.getProportionateScreenWidth(5),),
+              Padding(
+                padding: EdgeInsets.only(left :SizeConfig.getProportionateScreenWidth(8), right: SizeConfig.getProportionateScreenWidth(8)),
+                child: Text("app version ${packageInfo.version}", style: TextStyle(fontSize: SizeConfig.getProportionateScreenWidth(10))),
+              ),
+              Divider(color: Colors.black, height: SizeConfig.getProportionateScreenWidth(5),),
+              Center(child: Container(width: double.infinity,child: Text("My like item(s)", textAlign: TextAlign.center,style: TextStyle(fontSize: SizeConfig.getProportionateScreenWidth(14))), color: Colors.amber,),),
+              Divider(color: Colors.black, height: SizeConfig.getProportionateScreenWidth(5),),
+              Column(
+                children: List.generate(localFavoriteUrlList.length, (index) => Column(
+                  children: [
+                    InkWell(
+                      onTap: ()async{
+                        widget.initialUrl = localFavoriteUrlList[index];
+                        Get.to(WebViewExample(initialUrl: localFavoriteUrlList[index],));
+                      },
+                      child: Text(localFavoriteUrlList[index], style: TextStyle(fontSize: SizeConfig.getProportionateScreenWidth(12))),
+                    ),
+                    Divider(color: Colors.black, height: SizeConfig.getProportionateScreenWidth(5),),
+                  ],
+                )),
+              ),
+            ],
+          ),
         ),
       ),
       appBar: AppBar(
@@ -105,14 +127,15 @@ class _WebViewExampleState extends State<WebViewExample> {
         // This drop down menu demonstrates that Flutter widgets can be shown over the web view.
         actions: <Widget>[
           NavigationControls(_controller.future),
-          SampleMenu(_controller.future),
+          // SampleMenu(_controller.future),
         ],
       ),
       // We're using a Builder here so we have a context that is below the Scaffold
       // to allow calling Scaffold.of(context) so we can show a snackbar.
       body: Builder(builder: (BuildContext context) {
         return WebView(
-          initialUrl: 'https://www.mykobeauty.com',
+          initialUrl: widget.initialUrl,
+          userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 14_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/14E148",
           javascriptMode: JavascriptMode.unrestricted,
           onWebViewCreated: (WebViewController webViewController) async {
             try{
@@ -227,6 +250,8 @@ class _WebViewExampleState extends State<WebViewExample> {
                   }
                   Util.setSharedString(FAVORITE_URL, jsonEncode(urls));
                   setState(() {
+                    localFavoriteUrlList = [];
+                    localFavoriteUrlList.addAll(urls.toList());
                     if(urls.contains(url)){
                       likedUrl = true;
                     }
@@ -239,7 +264,7 @@ class _WebViewExampleState extends State<WebViewExample> {
                 }
                 // ignore: deprecated_member_use
                 Scaffold.of(context).showSnackBar(
-                  SnackBar(content: Text('Favorited $url')),
+                  SnackBar(content: Text('${likedUrl ? 'successfully save this url' : 'successfully remove this url'} : $url')),
                 );
               },
               child: likedUrl ? Icon(Icons.favorite) : Icon(Icons.favorite_border),
@@ -449,7 +474,9 @@ class NavigationControls extends StatelessWidget {
                   : () async {
                 if (await controller.canGoBack()) {
                   await controller.goBack();
-                } else {
+                }
+                else {
+                  Get.back(canPop: true);
                   // ignore: deprecated_member_use
                   Scaffold.of(context).showSnackBar(
                     const SnackBar(content: Text("No back history item")),
