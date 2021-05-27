@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:android_intent/android_intent.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:mykobeauty/util.dart';
 import 'package:package_info/package_info.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -20,15 +21,6 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'MYKO beauty',
       theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // Try running your application with "flutter run". You'll see the
-        // application has a blue toolbar. Then, without quitting the app, try
-        // changing the primarySwatch below to Colors.green and then invoke
-        // "hot reload" (press "r" in the console where you ran "flutter run",
-        // or simply save your changes to "hot reload" in a Flutter IDE).
-        // Notice that the counter didn't reset back to zero; the application
-        // is not restarted.
         primarySwatch: Colors.blue,
       ),
       home: WebViewExample(),
@@ -48,6 +40,7 @@ class _WebViewExampleState extends State<WebViewExample> {
   final Completer<WebViewController> _controller =
   Completer<WebViewController>();
   PackageInfo packageInfo = PackageInfo();
+  bool likedUrl = false;
   @override
   void initState() {
     WidgetsFlutterBinding.ensureInitialized();
@@ -112,7 +105,7 @@ class _WebViewExampleState extends State<WebViewExample> {
         // This drop down menu demonstrates that Flutter widgets can be shown over the web view.
         actions: <Widget>[
           NavigationControls(_controller.future),
-          // SampleMenu(_controller.future),
+          SampleMenu(_controller.future),
         ],
       ),
       // We're using a Builder here so we have a context that is below the Scaffold
@@ -123,12 +116,12 @@ class _WebViewExampleState extends State<WebViewExample> {
           javascriptMode: JavascriptMode.unrestricted,
           onWebViewCreated: (WebViewController webViewController) async {
             try{
-              webViewController.evaluateJavascript("window.localStorage.delete('token')");
+              // webViewController.evaluateJavascript("window.localStorage.delete('token')");
+              webViewController.evaluateJavascript("sendLogin");
+              webViewController.evaluateJavascript("(function() { try { sendLogin(); } catch (err) { return err; } })()");
             } catch(e){
 
             }
-
-            // webViewController.evaluateJavascript("(function() { try { window.localStorage.setItem('token', 'Bearer ${widget.token}'); } catch (err) { return err; } })()");
 
             _controller.complete(webViewController);
             print("온웹뷰 크리에이티드 : ${widget.token}");
@@ -139,32 +132,12 @@ class _WebViewExampleState extends State<WebViewExample> {
           // },
           javascriptChannels: <JavascriptChannel>{
             _toasterJavascriptChannel(context),
+            sendLogin(context),
           },
           navigationDelegate: (NavigationRequest request) async {
             print(request);
             if(isAppLink(request.url)){
-              if(Platform.isAndroid){
-                print("앱링크 이면서 안드로이드임");
-                AndroidIntent intent = AndroidIntent(
-                  action: 'action_send',
-                  data: Uri.encodeFull('kakaotalk'),
-                  // arguments: {'authAccount': currentUserEmail},
-                );
-                await intent.launch();
-                // final AndroidIntent intent = AndroidIntent(
-                //   action: 'action_main',
-                //   data: 'kakaotalk',
-                //   package: 'com.kakao.talk'
-                // );
-                // print(intent.data);
-                // intent.launch().then((value) {
-                //   print("실행됨");
-                // });
-                // await launch('kakaotalk');
-                //   print("실행됨");
-              }
               if (await canLaunch(request.url)) {
-
                 return NavigationDecision.prevent;
               } else {
                 print('Could not launch ${request.url}');
@@ -177,20 +150,45 @@ class _WebViewExampleState extends State<WebViewExample> {
           onPageStarted: (String url) {
             print('Page started loading: $url');
           },
-          onPageFinished: (String url) {
+          onPageFinished: (String url) async {
             print('Page finished loading: $url');
+            containsUrl(url).then((value) {
+              setState(() {
+                if(value) {
+                  likedUrl = true;
+                }
+                else {
+                  likedUrl = false;
+                }
+              });
+
+            });
           },
           gestureNavigationEnabled: true,
         );
       }),
-      // floatingActionButton: favoriteButton(),
+      floatingActionButton: favoriteButton(),
     );
   }
 
   JavascriptChannel _toasterJavascriptChannel(BuildContext context) {
+    print("이건? 해?");
     return JavascriptChannel(
         name: 'Toaster',
         onMessageReceived: (JavascriptMessage message) {
+          // ignore: deprecated_member_use
+          Scaffold.of(context).showSnackBar(
+            SnackBar(content: Text(message.message)),
+          );
+        });
+  }
+
+  JavascriptChannel sendLogin(BuildContext context) {
+    print("들어오긴 해?");
+    return JavascriptChannel(
+        name: 'sendLogin',
+        onMessageReceived: (JavascriptMessage message) {
+          print("여기를 봐보자");
           // ignore: deprecated_member_use
           Scaffold.of(context).showSnackBar(
             SnackBar(content: Text(message.message)),
@@ -207,16 +205,58 @@ class _WebViewExampleState extends State<WebViewExample> {
             return FloatingActionButton(
               onPressed: () async {
                 final String url = (await controller.data.currentUrl());
+                String favoriteUrlList = await Util.getSharedString(FAVORITE_URL);
+                if(favoriteUrlList == null){
+                  // 처음 최초 저장
+                  print(jsonEncode(['$url']));
+                  // print(jsonDecode(['$url']));
+                  Util.setSharedString(FAVORITE_URL, jsonEncode(['$url']));
+                }
+                else {
+                  // Util.allDeleteSharedString();
+                  List<dynamic> urls = jsonDecode(await Util.getSharedString(FAVORITE_URL));
+                  // 포함하고 있다면 지워주고
+                  if(urls.contains(url)){
+                    urls.remove(url);
+                    print(urls);
+                  }
+                  // 포함하고 있지 않다면 넣어준다.
+                  else{
+                    urls.add(url);
+                    print(urls);
+                  }
+                  Util.setSharedString(FAVORITE_URL, jsonEncode(urls));
+                  setState(() {
+                    if(urls.contains(url)){
+                      likedUrl = true;
+                    }
+                    else {
+                      likedUrl = false;
+                    }
+                  });
+
+                  print("최종 저장된 값 ${ jsonDecode(await Util.getSharedString(FAVORITE_URL))}");
+                }
                 // ignore: deprecated_member_use
                 Scaffold.of(context).showSnackBar(
                   SnackBar(content: Text('Favorited $url')),
                 );
               },
-              child: const Icon(Icons.favorite),
+              child: likedUrl ? Icon(Icons.favorite) : Icon(Icons.favorite_border),
             );
           }
           return Container();
         });
+  }
+  Future<bool> containsUrl(String url) async {
+    String favoriteUrlList = await Util.getSharedString(FAVORITE_URL);
+    if(favoriteUrlList == null) return false;
+    List<dynamic> urls = jsonDecode(await Util.getSharedString(FAVORITE_URL));
+    // 포함하고 있다면 지워주고
+    if(urls.contains(url)){
+      return true;
+    }
+    return false;
   }
 }
 
@@ -240,8 +280,7 @@ class SampleMenu extends StatelessWidget {
   Widget build(BuildContext context) {
     return FutureBuilder<WebViewController>(
       future: controller,
-      builder:
-          (BuildContext context, AsyncSnapshot<WebViewController> controller) {
+      builder: (BuildContext context, AsyncSnapshot<WebViewController> controller) {
         return PopupMenuButton<MenuOptions>(
           onSelected: (MenuOptions value) {
             switch (value) {
